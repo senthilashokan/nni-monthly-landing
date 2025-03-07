@@ -1,0 +1,109 @@
+# Node.js
+# Build a general Node.js project with npm.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger:
+  branches:
+    include:
+      - develop
+  paths:
+    include:
+      - client/** # This will trigger the pipeline only if there are changes in the 'client' folder.
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+- name: aws.rolecredential.maxduration
+  value: 3600 # 1 hour
+
+# variables:
+#   system.debug: true
+
+steps:
+# Step 1: Install Node js
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install --force
+    npm run build
+  displayName: 'npm install and build'
+  workingDirectory: client # Ensure it builds in the 'client' folder
+
+# - task: CopyFiles@2
+#   inputs:
+#     contents: 'client/build/**'
+#     targetFolder: '$(Build.ArtifactStagingDirectory)'
+#   displayName: 'Copy files to staging directory'
+
+# - task: PublishBuildArtifacts@1
+#   inputs:
+#     pathToPublish: '$(Build.ArtifactStagingDirectory)'
+#     artifactName: 'nni-monthly-landing'
+#   displayName: 'Publish build artifacts'
+
+# - script: aws --version
+#   displayName: 'Check AWS CLI version'
+
+- script: echo $(Build.ArtifactStagingDirectory)
+  displayName: 'Print Artifact Staging Directory'
+
+# - task: Bash@3
+#   inputs:
+#     targetType: 'inline'
+#     script: |
+#       cd $(Build.ArtifactStagingDirectory)
+#     # Add additional commands or tasks that should run in the new working directory
+#   displayName: 'Change Working Directory'
+
+# - script: pwd
+#   displayName: 'Present Working Directory'
+
+# - script: cd client
+#   displayName: 'Change the directory to client'
+
+# - script: ls -la
+#   displayName: 'List all Files under Present Working Directory'
+
+- task: AWSShellScript@1
+  inputs:
+    awsCredentials: 'NNI_MONTHLY_LANDING_SERVICE_CONNECTION'
+    regionName: 'us-east-1'
+    scriptType: 'inline'
+    inlineScript: 'aws s3 sync client/build s3://nni-react-app --delete'
+  displayName: 'Deploy to S3 React App'
+
+  # Step 3: Invalidate CloudFront cache
+- task: AWSShellScript@1
+  inputs:
+    awsCredentials: 'NNI_MONTHLY_LANDING_SERVICE_CONNECTION'
+    regionName: 'us-east-1'
+    scriptType: 'inline'
+    inlineScript: 'aws cloudfront create-invalidation --distribution-id E2RWDDJJP38KEJ --paths "/*"'
+  displayName: 'Invalidate CloudFront Cache'
+
+# - task: AWSCLI@1
+#   inputs:
+#     awsCredentials: 'NNI_MONTHLY_LANDING_SERVICE_CONNECTION'
+#     regionName: 'us-east-1'
+#     awsCommand: 's3'
+#     awsSubCommand: 'sync'
+#     s3Source: '$(Build.ArtifactStagingDirectory)/client/build'
+#     s3Destination: 's3://nni-react-app'
+#   displayName: 'Deploy to S3 React App'
+
+
+# # Step 3: Invalidate CloudFront cache
+# - task: AWSCLI@1
+#   inputs:
+#     awsCredentials: 'NNI_MONTHLY_LANDING_SERVICE_CONNECTION'
+#     regionName: 'us-east-1'
+#     awsCommand: 'cloudfront'
+#     awsSubCommand: 'create-invalidation'
+#     distributionId: 'E2RWDDJJP38KEJ'
+#     paths: '/*'
+#   displayName: 'Invalidate CloudFront Cache'

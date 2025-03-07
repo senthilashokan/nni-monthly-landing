@@ -1,0 +1,70 @@
+# Node.js
+# Build a general Node.js project with npm.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger:
+  branches:
+    include:
+      - develop
+  paths:
+    include:
+      - client/** # This will trigger the pipeline only if there are changes in the 'client' folder.
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  aws_rolecredential_maxduration: 3600 # 1 hour
+  AWS_REGION: 'us-east-1'
+  CONNECTION_NAME: 'NNI_MONTHLY_LANDING_SERVICE_CONNECTION_DEV'
+  BUCKET_NAME: 'nni-react-app'
+  BUCKET_SOURCE_FOLDER : 'dist'
+  DISTRIBUTION_ID: 'E2RWDDJJP38KEJ'
+  
+steps:
+# Step 1: Install Node js
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install
+    npm run build -- --mode dev
+  displayName: 'npm install and build'
+  workingDirectory: client # Ensure it builds in the 'client' folder
+
+# - task: CopyFiles@2
+#   inputs:
+#     contents: 'client/build/**'
+#     targetFolder: '$(Build.ArtifactStagingDirectory)'
+#   displayName: 'Copy files to staging directory'
+
+# - task: PublishBuildArtifacts@1
+#   inputs:
+#     pathToPublish: '$(Build.ArtifactStagingDirectory)'
+#     artifactName: 'nni-monthly-landing'
+#   displayName: 'Publish build artifacts'
+
+# - task: AWSCLI@1
+#   inputs:
+#     awsCredentials: $(CONNECTION_NAME)
+#     regionName: 'us-east-1'
+#     awsCommand: 's3'
+#     awsSubCommand: 'ls'
+
+- task: S3Upload@1
+  inputs:
+    awsCredentials: $(CONNECTION_NAME)
+    regionName: 'us-east-1'
+    bucketName: $(BUCKET_NAME)
+    sourceFolder: 'client/$(BUCKET_SOURCE_FOLDER)' # Use BUCKET_SOURCE_FOLDER variable
+    globExpressions: '**'
+
+- task: AWSCLI@1
+  inputs:
+    awsCredentials: $(CONNECTION_NAME)
+    regionName: 'us-east-1'
+    awsCommand: 'cloudfront'
+    awsSubCommand: 'create-invalidation'
+    awsArguments: '--distribution-id "$(DISTRIBUTION_ID)" --paths "/*"'
